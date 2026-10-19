@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir, cpus, totalmem } from "node:os";
 import { resolve, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const target = resolve(process.argv[2]);
 const label = process.argv[3];
@@ -53,7 +52,7 @@ try {
         ...(instrumented ? { REA_AUDIT_RESOURCE_LOG: join(output, `${id}-resources.jsonl`) } : {}),
       };
       const nodeArgs = [
-        ...(instrumented ? ["--import", fileURLToPath(new URL("cli-resource-probe.mjs", import.meta.url))] : []),
+        ...(instrumented ? ["--import", new URL("cli-resource-probe.mjs", import.meta.url).href] : []),
         join(target, "scripts", "rea.mjs"), "trace-web-module-imports", manifestPath, "0", "--json",
       ];
       const child = spawn(process.execPath, nodeArgs, { cwd: target, env: environment, stdio: ["pipe", "pipe", "pipe"] });

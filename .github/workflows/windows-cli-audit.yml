@@ -4,6 +4,7 @@ on:
     branches: [codex/diagnose-windows-cli-timeout]
 permissions:
   contents: read
+  actions: read
 jobs:
   compare:
     name: Windows CLI (${{ matrix.label }})
@@ -37,6 +38,17 @@ jobs:
       - run: npm install --global npm@11.16.0
       - run: npm ci
         working-directory: target
+      - name: Restore the exact native artifact from the failing upstream run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: morluto/rea
+          run-id: 39300547385
+          artifact-ids: 12211163524
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          path: target/native/windows/build
+      - run: npm run verify:windows-native:artifact
+        working-directory: target
       - run: npm run build:cached
         working-directory: target
       - name: Run the unchanged acceptance regression
@@ -45,6 +57,9 @@ jobs:
       - name: Measure cold CLI output and shutdown
         if: always()
         run: node audit/windows-cli-probe.mjs target ${{ matrix.label }}
+      - name: Run the unchanged complete curated Windows test selection
+        if: ${{ !cancelled() }}
+        run: node audit/run-curated-windows.mjs target
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
