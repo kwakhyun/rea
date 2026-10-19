@@ -6,6 +6,7 @@ import { resolve, join } from "node:path";
 
 const target = resolve(process.argv[2]);
 const label = process.argv[3];
+const cacheStudy = process.argv[4] === "cache-study";
 const output = resolve("audit-results");
 await mkdir(output, { recursive: true });
 const source = "import(name)";
@@ -39,16 +40,24 @@ const summary = {
   cpus: cpus().length, memoryBytes: totalmem(), executions: [],
 };
 try {
-  for (const instrumented of [false, true]) {
-    for (let index = 0; index < 3; index++) {
-      const id = `${label}-${instrumented ? "diagnostic" : "plain"}-${index}`;
+  const variants = cacheStudy
+    ? Array.from({ length: 3 }, (_, index) => [
+        { mode: "disabled", instrumented: true, index },
+        { mode: "cold", instrumented: true, index },
+        { mode: "warm", instrumented: true, index },
+      ]).flat().concat([{ mode: "flush", instrumented: true, index: 0 }])
+    : [false, true].flatMap(instrumented => Array.from({ length: 3 }, (_, index) => ({ mode: instrumented ? "diagnostic" : "plain", instrumented, index })));
+  for (const { mode, instrumented, index } of variants) {
+      const id = `${label}-${mode}-${index}`;
       const started = performance.now();
-      const record = { id, instrumented, stdoutFirstMs: null, stdoutLastMs: null, exitMs: null, closeMs: null, timedOut: false };
+      const record = { id, instrumented, startedAt: Date.now(), stdoutFirstMs: null, stdoutLastMs: null, exitMs: null, closeMs: null, timedOut: false };
       const environment = {
         PATH: process.env.PATH ?? "",
         ...(process.platform === "win32" ? { SystemRoot: process.env.SystemRoot, TEMP: tmpdir(), TMP: tmpdir() } : {}),
         REA_LOG_LEVEL: "silent", REA_BROWSER_EXECUTABLE: "relative-missing-browser",
-        NODE_COMPILE_CACHE: join(root, `cache-${id}`),
+        NODE_COMPILE_CACHE: join(root, mode === "cold" || mode === "warm" ? `cache-pair-${index}` : `cache-${id}`),
+        ...(mode === "disabled" ? { NODE_DISABLE_COMPILE_CACHE: "1" } : {}),
+        ...(mode === "flush" ? { REA_AUDIT_FLUSH_COMPILE_CACHE: "1" } : {}),
         ...(instrumented ? { REA_AUDIT_RESOURCE_LOG: join(output, `${id}-resources.jsonl`) } : {}),
       };
       const nodeArgs = [
@@ -88,7 +97,6 @@ try {
       await writeFile(join(output, `${label}-summary.json`), JSON.stringify(summary, null, 2));
       console.log(JSON.stringify(record));
       await writeFile(join(output, `${id}-stdout.json`), stdout);
-    }
   }
 } finally {
   await rm(root, { recursive: true, force: true });

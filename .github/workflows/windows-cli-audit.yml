@@ -51,15 +51,8 @@ jobs:
         working-directory: target
       - run: npm run build:cached
         working-directory: target
-      - name: Run the unchanged acceptance regression
-        run: node scripts/run-exact-tests.mjs run tests/acceptance/webModuleCli.test.ts --maxWorkers=1 --no-file-parallelism
-        working-directory: target
-      - name: Measure cold CLI output and shutdown
-        if: always()
-        run: node audit/windows-cli-probe.mjs target ${{ matrix.label }}
-      - name: Run the unchanged complete curated Windows test selection
-        if: ${{ !cancelled() }}
-        run: node audit/run-curated-windows.mjs target
+      - name: Compare disabled, fresh and reused compile caches on the same host
+        run: node audit/windows-cli-probe.mjs target ${{ matrix.label }} cache-study
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
