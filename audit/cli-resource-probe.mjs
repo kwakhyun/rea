@@ -1,0 +1,40 @@
+import { createHook } from "node:async_hooks";
+import { appendFileSync } from "node:fs";
+
+const filename = process.env.REA_AUDIT_RESOURCE_LOG;
+const started = performance.now();
+const tracked = new Set([
+  "Timeout", "PIPEWRAP", "TCPWRAP", "TCPCONNECTWRAP", "PROCESSWRAP",
+  "WORKER", "FSEVENTWRAP", "SIGNALWRAP", "GETADDRINFOREQWRAP", "MESSAGEPORT",
+]);
+const resources = new Map();
+const hook = createHook({
+  init(id, type, trigger, resource) {
+    if (!tracked.has(type)) return;
+    resources.set(id, {
+      type, trigger, resource,
+      createdMs: Math.round(performance.now() - started),
+      stack: new Error().stack?.split("\n").slice(2, 12),
+    });
+  },
+  destroy(id) { resources.delete(id); },
+});
+hook.enable();
+function record(event) {
+  const report = process.report.getReport();
+  appendFileSync(filename, JSON.stringify({
+    event, elapsedMs: Math.round(performance.now() - started),
+    resources: process.getActiveResourcesInfo(),
+    tracked: [...resources].map(([id, entry]) => ({
+      id, type: entry.type, trigger: entry.trigger, createdMs: entry.createdMs,
+      hasRef: typeof entry.resource.hasRef === "function" ? entry.resource.hasRef() : null,
+      stack: entry.stack,
+    })),
+    libuv: report.libuv,
+    resourceUsage: report.resourceUsage,
+  }) + "\n");
+}
+record("start");
+setInterval(() => record("interval"), 1000).unref();
+process.on("beforeExit", () => record("beforeExit"));
+process.on("exit", () => record("exit"));

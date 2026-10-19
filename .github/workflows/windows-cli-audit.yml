@@ -1,0 +1,53 @@
+name: Windows CLI timeout diagnosis
+on:
+  push:
+    branches: [codex/diagnose-windows-cli-timeout]
+permissions:
+  contents: read
+jobs:
+  compare:
+    name: Windows CLI (${{ matrix.label }})
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: base
+            repository: morluto/rea
+            revision: 1c2c2f1e78a74cdf5e4909ab8e775b090998a51f
+          - label: pr
+            repository: kwakhyun/rea
+            revision: ed450cafb43d87475bc9a072b85c1086b65c2b4d
+    env:
+      HUSKY: "0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.revision }}
+          path: target
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.18.0
+      - run: npm install --global npm@11.16.0
+      - run: npm ci
+        working-directory: target
+      - run: npm run build:cached
+        working-directory: target
+      - name: Run the unchanged acceptance regression
+        run: node scripts/run-exact-tests.mjs run tests/acceptance/webModuleCli.test.ts --maxWorkers=1 --no-file-parallelism
+        working-directory: target
+      - name: Measure cold CLI output and shutdown
+        if: always()
+        run: node audit/windows-cli-probe.mjs target ${{ matrix.label }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-cli-${{ matrix.label }}
+          path: audit-results
+          if-no-files-found: error
