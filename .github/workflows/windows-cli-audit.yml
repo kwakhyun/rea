@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: base
-            repository: morluto/rea
-            revision: 1c2c2f1e78a74cdf5e4909ab8e775b090998a51f
-          - label: pr
+          - label: patched
             repository: kwakhyun/rea
-            revision: ed450cafb43d87475bc9a072b85c1086b65c2b4d
+            revision: ff9cba6fe7ae048bfe800eb23caa6d6f0b395df0
     env:
       HUSKY: "0"
     steps:
@@ -51,11 +48,14 @@ jobs:
         working-directory: target
       - run: npm run build:cached
         working-directory: target
-      - name: Compare disabled, fresh and reused compile caches on the same host
-        run: node audit/windows-cli-probe.mjs target ${{ matrix.label }} cache-study
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: windows-cli-${{ matrix.label }}
-          path: audit-results
-          if-no-files-found: error
+      - name: Verify CLI parity and existing cache behavior on the committed patch
+        working-directory: target
+        run: >-
+          node scripts/run-exact-tests.mjs run
+          tests/acceptance/webModuleCli.test.ts
+          tests/acceptance/webSourceLocationCli.test.ts
+          tests/boundary/cli/cliCompileCache.test.ts
+          --maxWorkers=1 --no-file-parallelism
+      - name: Run the full curated Windows test selection
+        if: ${{ !cancelled() }}
+        run: node audit/run-curated-windows.mjs target
